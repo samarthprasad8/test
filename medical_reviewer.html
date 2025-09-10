@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Image Reviewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-user-select: none;  /* Prevent text selection */
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        #image-viewer-container {
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+            border-radius: 0.5rem;
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+        }
+        #imageCanvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .timer-glow {
+            animation: pulse-glow 1s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            from {
+                text-shadow: 0 0 5px #fef08a, 0 0 10px #fef08a;
+            }
+            to {
+                text-shadow: 0 0 10px #fef08a, 0 0 20px #fef08a;
+            }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-center items-center p-4">
+
+    <div id="main-app" class="w-full max-w-7xl mx-auto p-8 bg-gray-800 text-white rounded-2xl shadow-lg flex flex-col gap-6">
+
+        <h1 class="text-4xl font-bold text-center text-teal-300 mb-6">Medical Image Reviewer</h1>
+
+        <div id="pat-section" class="flex flex-col gap-4">
+            <h2 class="text-2xl font-semibold mb-2 text-center text-gray-200">Connect to GitHub</h2>
+            
+            <input type="password" id="github-pat" placeholder="GitHub Personal Access Token (PAT)" class="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500">
+            <p class="text-sm text-yellow-400 mt-1">
+                <span class="font-bold">Warning:</span> Your PAT gives this app access to your GitHub account. It is not stored and is only used for API calls. Use a token with limited `repo` scope.
+            </p>
+            <button id="connect-btn" class="w-full md:w-auto px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200">Connect</button>
+        </div>
+
+        <div id="repo-selection-section" class="hidden flex flex-col gap-4">
+            <h2 class="text-2xl font-semibold mb-2 text-center text-gray-200">Select Dataset from GitHub</h2>
+            <p class="text-sm text-center text-gray-300">Connected as: <span id="github-username" class="font-bold text-teal-300"></span></p>
+
+            <div class="flex flex-col gap-4">
+                <div>
+                    <label for="github-repo-select" class="text-gray-300 mb-1 block">Repository:</label>
+                    <select id="github-repo-select" class="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <option value="">-- Select a Repository --</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="csv-path-select" class="text-gray-300 mb-1 block">CSV File:</label>
+                    <select id="csv-path-select" class="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" disabled>
+                        <option value="">-- Select a CSV file --</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="images-path-select" class="text-gray-300 mb-1 block">Image Directory:</label>
+                    <select id="images-path-select" class="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" disabled>
+                        <option value="">-- Select an Image Directory --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-4 mt-4">
+                <button id="load-data-btn" class="w-full px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200" disabled>Load Dataset</button>
+            </div>
+        </div>
+
+        <div id="ai-section" class="hidden flex flex-col lg:flex-row gap-6 p-4 bg-gray-700 rounded-xl shadow-inner">
+            <div class="flex-1 flex flex-col gap-4">
+                <div class="flex flex-col">
+                    <label for="sample-size" class="text-gray-300 mb-1">Number of cases to review:</label>
+                    <input type="number" id="sample-size" min="1" value="10" class="w-32 bg-gray-600 text-white p-2 rounded-lg border border-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+                <button id="start-review-btn" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200">Start Review Session</button>
+            </div>
+            
+            <div class="flex-1 flex flex-col gap-4">
+                <h3 class="text-xl font-semibold text-gray-200">Simulate an AI</h3>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="ai-enabled" class="form-checkbox h-5 w-5 text-purple-600 bg-gray-600 border-gray-500 rounded focus:ring-purple-500">
+                    <label for="ai-enabled" class="text-gray-300">Enable AI</label>
+                </div>
+                <div id="ai-controls-container" class="hidden">
+                    <div>
+                        <label for="ai-accuracy" class="text-gray-300 mb-1">AI Accuracy: <span id="accuracy-value">50</span>%</label>
+                        <input type="range" id="ai-accuracy" min="0" max="100" value="50" class="w-full appearance-none h-2 bg-gray-600 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500 accent-teal-500">
+                    </div>
+                    <div>
+                        <label for="ai-delay" class="text-gray-300 mb-1">AI Decision Delay: <span id="delay-value">1000</span>ms</label>
+                        <input type="range" id="ai-delay" min="0" max="5000" value="1000" class="w-full appearance-none h-2 bg-gray-600 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500 accent-teal-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="review-section" class="hidden flex flex-col gap-6 items-center">
+            
+            <div class="w-full flex justify-between items-center bg-gray-700 p-4 rounded-xl">
+                <p class="text-gray-400">
+                    <span id="case-counter" class="font-bold text-lg text-teal-300">Case 1</span> / <span id="total-cases" class="text-lg">10</span>
+                </p>
+                <div class="flex items-center gap-2">
+                    <span id="timer-icon" class="text-yellow-400">⏳</span>
+                    <span id="timer" class="font-mono text-xl text-yellow-300 timer-glow">0.0s</span>
+                </div>
+                <p class="text-sm text-gray-400">
+                    <span class="font-semibold text-gray-200">Controls:</span> Left-click Pan, Right-click Contrast, Scroll Zoom
+                </p>
+            </div>
+
+            <div id="image-viewer-container" class="w-full max-w-4xl h-[600px] mb-4">
+                <canvas id="imageCanvas" class="w-full h-full"></canvas>
+            </div>
+
+            <div class="flex gap-4">
+                <button id="present-btn" class="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-transform transform hover:scale-105">Disease Present</button>
+                <button id="not-present-btn" class="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition-transform transform hover:scale-105">Not Present</button>
+            </div>
+        </div>
+
+        <div id="report-section" class="hidden flex flex-col gap-4 items-center">
+            <h2 class="text-2xl font-semibold text-center text-teal-300">Session Complete!</h2>
+            <p class="text-gray-300 text-center">Your review data is ready to be uploaded to GitHub.</p>
+            <div class="w-full p-4 bg-gray-700 rounded-lg shadow-inner">
+                <p id="final-stats" class="text-lg text-gray-200 text-center"></p>
+                <p class="text-sm text-gray-400 mt-2 text-center">You are currently logged in as: <span id="github-username-report" class="font-bold text-teal-300"></span></p>
+            </div>
+            <button id="upload-btn" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-transform transform hover:scale-105">Upload Results to GitHub</button>
+        </div>
+
+        <div id="modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden flex items-center justify-center p-4">
+            <div id="modal-content" class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-lg w-full text-center flex flex-col items-center">
+                <p id="modal-message" class="text-xl font-semibold text-gray-200 mb-4"></p>
+                <button id="modal-close-btn" class="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors">Close</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://unpkg.com/dicom-parser@1.8.1/dist/dicomParser.min.js"></script>
+    <script src="https://unpkg.com/cornerstone-core@2.2.0/dist/cornerstone.min.js"></script>
+    <script src="https://unpkg.com/cornerstone-wado-image-loader@2.0.0/dist/cornerstoneWADOImageLoader.min.js"></script>
+    
+    <script>
+        // Global variables for state management
+        let githubToken = '';
+        let githubUsername = '';
+        let githubRepo = '';
+        let githubDefaultBranch = 'main'; // Default to 'main'
+        let csvPath = '';
+        let imagesPath = '';
+        let casesData = [];
+        let sampleCases = [];
+        let currentCaseIndex = 0;
+        let reviewResults = [];
+        let timerStart = 0;
+        let timerInterval = null;
+        let aiAccuracy = 50;
+        let aiDelay = 1000;
+        let isAiEnabled = false;
+
+        // Image Viewer State
+        let canvas = null;
+        let canvasContainer = null;
+        let context = null;
+        let imageElement = null;
+        let imageState = {
+            scale: 1,
+            x: 0,
+            y: 0,
+            min: 0,
+            max: 255
+        };
+        let isPanning = false;
+        let isAdjustingContrast = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // UI Elements
+        const patSection = document.getElementById('pat-section');
+        const repoSelectionSection = document.getElementById('repo-selection-section');
+        const aiSection = document.getElementById('ai-section');
+        const reviewSection = document.getElementById('review-section');
+        const reportSection = document.getElementById('report-section');
+        const connectBtn = document.getElementById('connect-btn');
+        const loadDataBtn = document.getElementById('load-data-btn');
+        const startReviewBtn = document.getElementById('start-review-btn');
+        const presentBtn = document.getElementById('present-btn');
+        const notPresentBtn = document.getElementById('not-present-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const modal = document.getElementById('modal');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const githubPatInput = document.getElementById('github-pat');
+        const githubRepoSelect = document.getElementById('github-repo-select');
+        const csvPathSelect = document.getElementById('csv-path-select');
+        const imagesPathSelect = document.getElementById('images-path-select');
+        const caseCounterSpan = document.getElementById('case-counter');
+        const totalCasesSpan = document.getElementById('total-cases');
+        const timerSpan = document.getElementById('timer');
+        const aiEnabledCheckbox = document.getElementById('ai-enabled');
+        const aiControlsContainer = document.getElementById('ai-controls-container');
+        const aiAccuracyInput = document.getElementById('ai-accuracy');
+        const accuracyValueSpan = document.getElementById('accuracy-value');
+        const aiDelayInput = document.getElementById('ai-delay');
+        const delayValueSpan = document.getElementById('delay-value');
+        const sampleSizeInput = document.getElementById('sample-size');
+        const githubUsernameSpan = document.getElementById('github-username');
+        const finalStats = document.getElementById('final-stats');
+
+        // Initialize Canvas
+        canvas = document.getElementById('imageCanvas');
+        canvasContainer = document.getElementById('image-viewer-container');
+        context = canvas.getContext('2d');
+        cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+        cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+        
+        // Set up canvas dimensions dynamically
+        const resizeCanvas = () => {
+            const rect = canvasContainer.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            if (imageElement) drawImage();
+        };
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Image viewer event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left click for pan
+                isPanning = true;
+            } else if (e.button === 2) { // Right click for contrast
+                isAdjustingContrast = true;
+            }
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const dx = e.clientX - lastX;
+                const dy = e.clientY - lastY;
+                imageState.x += dx;
+                imageState.y += dy;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                drawImage();
+            } else if (isAdjustingContrast) {
+                const dy = e.clientY - lastY;
+                const delta = dy * 2;
+                imageState.max -= delta;
+                imageState.min += delta;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                drawImage();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isPanning = false;
+            isAdjustingContrast = false;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            imageState.scale *= scaleFactor;
+            drawImage();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // UI Event Listeners
+        connectBtn.addEventListener('click', async () => {
+            githubToken = githubPatInput.value.trim();
+
+            if (!githubToken) {
+                showMessage("Please enter your GitHub Personal Access Token.");
+                return;
+            }
+
+            connectBtn.disabled = true;
+            connectBtn.textContent = "Connecting...";
+
+            try {
+                // Get user info to display
+                const userResponse = await fetch('https://api.github.com/user', {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+
+                if (!userResponse.ok) {
+                    throw new Error(`GitHub API error: ${userResponse.status} ${userResponse.statusText}.`);
+                }
+                const userData = await userResponse.json();
+                githubUsername = userData.login;
+
+                showMessage(`Successfully connected as ${githubUsername}! Loading repositories...`, false);
+                patSection.classList.add('hidden');
+                repoSelectionSection.classList.remove('hidden');
+                githubUsernameSpan.textContent = githubUsername;
+                
+                await fetchAndPopulateRepos();
+                
+            } catch (error) {
+                console.error('Error connecting to GitHub:', error);
+                showMessage(`Failed to connect: ${error.message}. Please check your PAT.`);
+                connectBtn.disabled = false;
+                connectBtn.textContent = "Connect";
+            }
+        });
+
+        githubRepoSelect.addEventListener('change', async (event) => {
+            const selectedRepo = event.target.value;
+            if (selectedRepo) {
+                githubRepo = selectedRepo;
+                csvPathSelect.disabled = true;
+                imagesPathSelect.disabled = true;
+                loadDataBtn.disabled = true;
+                csvPathSelect.innerHTML = '<option value="">-- Loading... --</option>';
+                imagesPathSelect.innerHTML = '<option value="">-- Loading... --</option>';
+                await fetchAndPopulateFiles(selectedRepo);
+            }
+        });
+
+        csvPathSelect.addEventListener('change', () => {
+            csvPath = csvPathSelect.value;
+            updateLoadButtonState();
+        });
+
+        imagesPathSelect.addEventListener('change', () => {
+            imagesPath = imagesPathSelect.value;
+            updateLoadButtonState();
+        });
+
+        loadDataBtn.addEventListener('click', async () => {
+            if (!githubRepo || !csvPath || !imagesPath) {
+                showMessage("Please select all required fields.");
+                return;
+            }
+
+            loadDataBtn.disabled = true;
+            loadDataBtn.textContent = "Loading...";
+            
+            try {
+                // Get CSV file and parse it using the GitHub API to avoid CORS issues
+                const csvResponse = await fetch(`https://api.github.com/repos/${githubRepo}/contents/${csvPath}`, {
+                    headers: {
+                        'Authorization': `token ${githubToken}`,
+                        'Accept': 'application/vnd.github.v3.raw'
+                    }
+                });
+
+                if (!csvResponse.ok) {
+                    const errorText = await csvResponse.text();
+                    console.error('GitHub API response error:', csvResponse.status, csvResponse.statusText, errorText);
+                    throw new Error(`GitHub API error: ${csvResponse.status} ${csvResponse.statusText}. Please check the repository and CSV file path.`);
+                }
+                const csvText = await csvResponse.text();
+                casesData = parseCSV(csvText);
+
+                if (casesData.length === 0) {
+                    throw new Error("CSV file is empty or could not be parsed.");
+                }
+
+                showMessage(`Successfully loaded ${casesData.length} cases. You can now select a sample size and start the review.`);
+                repoSelectionSection.classList.add('hidden');
+                aiSection.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showMessage(`Failed to load data: ${error.message}`);
+                loadDataBtn.disabled = false;
+                loadDataBtn.textContent = "Load Dataset";
+            }
+        });
+
+        startReviewBtn.addEventListener('click', () => {
+            const sampleSize = parseInt(sampleSizeInput.value);
+            if (isNaN(sampleSize) || sampleSize <= 0 || sampleSize > casesData.length) {
+                showMessage(`Please enter a valid sample size between 1 and ${casesData.length}.`);
+                return;
+            }
+
+            isAiEnabled = aiEnabledCheckbox.checked;
+            aiAccuracy = parseInt(aiAccuracyInput.value);
+            aiDelay = parseInt(aiDelayInput.value);
+
+            sampleCases = createRepresentativeSample(casesData, sampleSize);
+            totalCasesSpan.textContent = sampleCases.length;
+            currentCaseIndex = 0;
+            reviewResults = [];
+            
+            aiSection.classList.add('hidden');
+            reviewSection.classList.remove('hidden');
+            nextCase();
+        });
+
+        presentBtn.addEventListener('click', () => recordDecision(true));
+        notPresentBtn.addEventListener('click', () => recordDecision(false));
+
+        uploadBtn.addEventListener('click', async () => {
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = "Uploading...";
+            
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/T|:/g, '-').slice(0, -5);
+            const uploadFileName = `review_data_${githubUsername}_${timestamp}.csv`;
+            
+            const csvContent = generateCSV(reviewResults);
+            
+            try {
+                await createOrUpdateGitHubFile(
+                    githubRepo,
+                    `results/${uploadFileName}`,
+                    csvContent,
+                    `Upload review data from ${githubUsername}`,
+                    githubToken
+                );
+                showMessage("Successfully uploaded the review data to your GitHub repository!", true);
+                uploadBtn.textContent = "Upload Complete!";
+                uploadBtn.classList.add('bg-green-600', 'hover:bg-green-600');
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                showMessage(`Failed to upload file to GitHub: ${error.message}`);
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = "Upload to GitHub";
+            }
+        });
+
+        modalCloseBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        aiEnabledCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                aiControlsContainer.classList.remove('hidden');
+            } else {
+                aiControlsContainer.classList.add('hidden');
+            }
+        });
+
+        aiAccuracyInput.addEventListener('input', () => {
+            accuracyValueSpan.textContent = aiAccuracyInput.value;
+        });
+
+        aiDelayInput.addEventListener('input', () => {
+            delayValueSpan.textContent = aiDelayInput.value;
+        });
+
+        // Helper functions for UI and data fetching
+        async function fetchAndPopulateRepos() {
+            try {
+                const response = await fetch('https://api.github.com/user/repos?per_page=100', {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+                const repos = await response.json();
+                
+                if (repos.message) {
+                    throw new Error(repos.message);
+                }
+
+                githubRepoSelect.innerHTML = '<option value="">-- Select a Repository --</option>';
+                repos.forEach(repo => {
+                    const option = document.createElement('option');
+                    option.value = repo.full_name;
+                    option.textContent = repo.full_name;
+                    githubRepoSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Failed to fetch repositories:", error);
+                showMessage(`Failed to fetch repositories: ${error.message}.`);
+            }
+        }
+
+        async function fetchAndPopulateFiles(repo) {
+            try {
+                // First, get the default branch for the repository
+                const repoResponse = await fetch(`https://api.github.com/repos/${repo}`, {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+                const repoData = await repoResponse.json();
+                if (repoData.message) {
+                    throw new Error(repoData.message);
+                }
+                githubDefaultBranch = repoData.default_branch;
+
+                // Now use the correct branch to get the tree
+                const url = `https://api.github.com/repos/${repo}/git/trees/${githubDefaultBranch}?recursive=1`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+                const data = await response.json();
+                
+                if (data.message) {
+                    throw new Error(data.message);
+                }
+
+                csvPathSelect.innerHTML = '<option value="">-- Select a CSV file --</option>';
+                imagesPathSelect.innerHTML = '<option value="">-- Select an Image Directory --</option>';
+
+                const directories = new Set();
+                data.tree.forEach(item => {
+                    if (item.path.endsWith('.csv') && item.type === 'blob') {
+                        const option = document.createElement('option');
+                        option.value = item.path;
+                        option.textContent = item.path;
+                        csvPathSelect.appendChild(option);
+                    }
+                    // Extract directory paths for images
+                    if (item.path.includes('.')) { // It's a file
+                        const dir = item.path.substring(0, item.path.lastIndexOf('/'));
+                        if (dir) {
+                            directories.add(dir);
+                        }
+                    } else if (item.type === 'tree') {
+                        directories.add(item.path);
+                    }
+                });
+
+                directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir;
+                    option.textContent = dir;
+                    imagesPathSelect.appendChild(option);
+                });
+
+                csvPathSelect.disabled = false;
+                imagesPathSelect.disabled = false;
+
+            } catch (error) {
+                console.error("Failed to fetch repository contents:", error);
+                showMessage(`Failed to fetch repository contents: ${error.message}. Please ensure the repository is not empty and you have access.`);
+            }
+        }
+
+        function updateLoadButtonState() {
+            if (githubRepoSelect.value && csvPathSelect.value && imagesPathSelect.value) {
+                loadDataBtn.disabled = false;
+            } else {
+                loadDataBtn.disabled = true;
+            }
+        }
+
+        // Main Logic Functions
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length <= 1) return [];
+            
+            // Find header line and parse it
+            const header = lines[0].split(',').map(h => h.trim());
+            
+            // Find the indices for the specific columns in your CSV
+            const originalFilenameIndex = header.indexOf('original_filename');
+            const pneumothoraxPresentIndex = header.indexOf('pneumothorax_present');
+            
+            // Check if the required headers exist
+            if (originalFilenameIndex === -1 || pneumothoraxPresentIndex === -1) {
+                throw new Error("CSV header must contain 'original_filename' and 'pneumothorax_present' columns.");
+            }
+            
+            const data = lines.slice(1).map(line => {
+                const values = line.split(',').map(v => v.trim());
+                const row = {};
+                
+                // Map the values to the expected internal keys
+                row['file name'] = values[originalFilenameIndex];
+                row['is disease present'] = values[pneumothoraxPresentIndex]?.toLowerCase() === 'yes' ? 'true' : 'false';
+                
+                // Populate the rest of the row with the original headers
+                header.forEach((h, i) => {
+                    if (i !== originalFilenameIndex && i !== pneumothoraxPresentIndex) {
+                        row[h] = values[i];
+                    }
+                });
+
+                return row;
+            });
+            return data;
+        }
+
+        function createRepresentativeSample(data, size) {
+            const positiveCases = data.filter(c => c['is disease present']?.toLowerCase() === 'true');
+            const negativeCases = data.filter(c => c['is disease present']?.toLowerCase() === 'false');
+
+            const positiveRatio = positiveCases.length / data.length;
+            const negativeRatio = negativeCases.length / data.length;
+
+            const numPositive = Math.round(size * positiveRatio);
+            const numNegative = size - numPositive;
+
+            const shuffledPositive = positiveCases.sort(() => 0.5 - Math.random());
+            const shuffledNegative = negativeCases.sort(() => 0.5 - Math.random());
+
+            const sample = shuffledPositive.slice(0, numPositive)
+                .concat(shuffledNegative.slice(0, numNegative));
+            
+            return sample.sort(() => 0.5 - Math.random()); // Shuffle the final sample
+        }
+
+        async function nextCase() {
+            if (currentCaseIndex >= sampleCases.length) {
+                endReview();
+                return;
+            }
+
+            const currentCase = sampleCases[currentCaseIndex];
+            const fileName = currentCase['file name'];
+            const filePath = `${imagesPath}/${fileName}`;
+
+            caseCounterSpan.textContent = currentCaseIndex + 1;
+            timerStart = Date.now();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = (Date.now() - timerStart) / 1000;
+                timerSpan.textContent = `${elapsed.toFixed(1)}s`;
+            }, 100);
+
+            presentBtn.disabled = notPresentBtn.disabled = true;
+            presentBtn.textContent = "Loading...";
+            notPresentBtn.textContent = "Loading...";
+
+            try {
+                await loadImageFromGitHub(filePath);
+                presentBtn.disabled = notPresentBtn.disabled = false;
+                presentBtn.textContent = "Disease Present";
+                notPresentBtn.textContent = "Not Present";
+                
+                if (isAiEnabled) {
+                    simulateAI(currentCase);
+                }
+            } catch (error) {
+                console.error('Error loading image:', error);
+                showMessage(`Failed to load image for case ${currentCaseIndex + 1}: ${error.message}. Skipping this case.`);
+                currentCaseIndex++; // Move to the next case
+                nextCase(); // Try to load the next one
+            }
+        }
+
+        function isLfsPointer(content) {
+            return content.startsWith('version https://git-lfs.github.com/spec/v1');
+        }
+
+        function parseLfsPointer(content) {
+            const oid = content.split('\n').find(line => line.startsWith('oid'))?.split(' ')[1];
+            return { oid };
+        }
+
+        // CORRECTED: This function now sends the full OID string
+        async function getLfsDownloadUrl(repo, oid) {
+            const [owner, name] = repo.split('/');
+            const lfsDownloadUrl = `http://localhost:3001/lfs/${owner}/${name}/objects/${oid}`;
+            return lfsDownloadUrl;
+        }
+
+        async function loadImageFromGitHub(filePath) {
+            let fileBlob;
+            let fileExtension = filePath.split('.').pop().toLowerCase();
+
+            // Clear previous image and reset state
+            imageState.scale = 1;
+            imageState.x = 0;
+            imageState.y = 0;
+            imageState.min = 0;
+            imageState.max = 255;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            try {
+                const githubApiUrl = `https://api.github.com/repos/${githubRepo}/contents/${filePath}?ref=${githubDefaultBranch}`;
+                console.log(`Attempting to fetch file from: ${githubApiUrl}`);
+
+                const response = await fetch(githubApiUrl, {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('GitHub API response error:', response.status, response.statusText, errorText);
+                    throw new Error(`GitHub API error: ${response.status} ${response.statusText}. Please check the repository and file path.`);
+                }
+                
+                const fileData = await response.json();
+                const fileContent = atob(fileData.content);
+
+                if (isLfsPointer(fileContent)) {
+                    showMessage("Fetching Git LFS image...", false);
+                    const { oid } = parseLfsPointer(fileContent);
+                    if (!oid) {
+                        throw new Error('Failed to parse OID from LFS pointer file.');
+                    }
+                    console.log(`LFS pointer detected. OID: ${oid}`);
+                    
+                    const lfsDownloadUrl = await getLfsDownloadUrl(githubRepo, oid);
+                    console.log(`Attempting to download LFS content from PROXY: ${lfsDownloadUrl}`);
+                    
+                    const lfsResponse = await fetch(lfsDownloadUrl, {
+                        headers: {
+                            'X-GitHub-Token': githubToken
+                        }
+                    });
+                    
+                    if (!lfsResponse.ok) {
+                        const errorText = await lfsResponse.text();
+                        console.error('LFS download response error:', lfsResponse.status, lfsResponse.statusText, errorText);
+                        throw new Error(`Failed to download LFS image: ${lfsResponse.status} ${lfsResponse.statusText}. Check the console for more details.`);
+                    }
+                    fileBlob = await lfsResponse.blob();
+                }
+                else {
+                    const binaryString = atob(fileData.content);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    fileBlob = new Blob([bytes], { type: 'application/octet-stream' });
+                }
+
+                if (fileExtension === 'png' || fileExtension === 'jpg' || fileExtension === 'jpeg') {
+                    const imgUrl = URL.createObjectURL(fileBlob);
+                    imageElement = new Image();
+                    imageElement.onload = () => {
+                        drawImage();
+                        URL.revokeObjectURL(imgUrl);
+                    };
+                    imageElement.onerror = (e) => {
+                        console.error("Image load error:", e);
+                        throw new Error("Failed to load image. It might be corrupted or in an unsupported format.");
+                    };
+                    imageElement.src = imgUrl;
+                } else if (fileExtension === 'dcm' || fileExtension === 'dicom') {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const arrayBuffer = e.target.result;
+                        const byteArray = new Uint8Array(arrayBuffer);
+                        try {
+                            const dicomImage = cornerstone.wadouri.dataSetToImage(dicomParser.parseDicom(byteArray), "file");
+                            dicomImage.promise.then(function(image) {
+                                imageElement = image;
+                                cornerstone.enable(canvas);
+                                cornerstone.fitToWindow(canvas);
+                                drawImage();
+                                
+                                canvas.removeEventListener('mousedown', cornerstone.handleMouseDown);
+                                canvas.removeEventListener('mousemove', cornerstone.handleMouseMove);
+                                canvas.removeEventListener('mouseup', cornerstone.handleMouseUp);
+                                canvas.removeEventListener('contextmenu', cornerstone.handleRightClick);
+                                canvas.removeEventListener('wheel', cornerstone.handleMouseWheel);
+
+                            }).catch(err => {
+                                console.error("Cornerstone error:", err);
+                                showMessage("Failed to render DICOM image.");
+                            });
+                        } catch (err) {
+                            console.error("DICOM parsing error:", err);
+                            showMessage("Failed to parse DICOM file.");
+                        }
+                    };
+                    reader.readAsArrayBuffer(fileBlob);
+                } else {
+                    throw new Error(`Unsupported image format: ${fileExtension}.`);
+                }
+            } catch (error) {
+                console.error('An unexpected error occurred during image loading:', error);
+                throw new Error(`Failed to fetch the image: ${error.message}. Please check your network connection and GitHub permissions.`);
+            }
+        }
+        
+        function drawImage() {
+            if (!imageElement || !context || !canvas) return;
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.save();
+            context.translate(canvas.width / 2, canvas.height / 2);
+            context.scale(imageState.scale, imageState.scale);
+            context.translate(-canvas.width / 2, -canvas.height / 2);
+            context.translate(imageState.x, imageState.y);
+
+            // Draw the image
+            if (imageElement instanceof Image) {
+                 // Calculate aspect ratio and fit to canvas
+                const imgAspect = imageElement.width / imageElement.height;
+                const canvasAspect = canvas.width / canvas.height;
+                let drawWidth, drawHeight;
+
+                if (imgAspect > canvasAspect) {
+                    drawWidth = canvas.width;
+                    drawHeight = canvas.width / imgAspect;
+                } else {
+                    drawHeight = canvas.height;
+                    drawWidth = canvas.height * imgAspect;
+                }
+
+                // Center the image within the canvas
+                const startX = (canvas.width - drawWidth) / 2;
+                const startY = (canvas.height - drawHeight) / 2;
+
+                context.drawImage(imageElement, startX, startY, drawWidth, drawHeight);
+            } else { // DICOM image
+                 // Cornerstone handles the drawing for DICOM images
+                 // We only need to trigger the update
+                 const viewport = cornerstone.getViewport(canvas);
+                 viewport.voi.windowWidth = imageState.max - imageState.min;
+                 viewport.voi.windowCenter = imageState.min + viewport.voi.windowWidth / 2;
+                 cornerstone.setViewport(canvas, viewport);
+            }
+            context.restore();
+        }
+
+        function recordDecision(userDecision) {
+            clearInterval(timerInterval);
+            const timeTaken = (Date.now() - timerStart) / 1000;
+            const currentCase = sampleCases[currentCaseIndex];
+            const groundTruth = currentCase['is disease present']?.toLowerCase() === 'true';
+
+            let aiAccuracyOnCase = 'N/A';
+            if (isAiEnabled) {
+                const aiCorrect = Math.abs(currentCase.aiDecision - groundTruth);
+                aiAccuracyOnCase = (1 - aiCorrect) * 100;
+            }
+
+            reviewResults.push({
+                'File Name': currentCase['file name'],
+                'Ground Truth': groundTruth,
+                'User Decision': userDecision,
+                'User GitHub': githubUsername,
+                'AI Accuracy': aiAccuracyOnCase,
+                'Time Taken (s)': timeTaken.toFixed(2),
+                'Time Taken (ms)': (timeTaken * 1000).toFixed(0)
+            });
+
+            currentCaseIndex++;
+            nextCase();
+        }
+
+        function simulateAI(currentCase) {
+            presentBtn.disabled = notPresentBtn.disabled = true;
+            const groundTruth = currentCase['is disease present']?.toLowerCase() === 'true';
+            
+            setTimeout(() => {
+                const correct = Math.random() < (aiAccuracy / 100);
+                const aiDecision = correct ? groundTruth : !groundTruth;
+                
+                // Store AI decision for later reporting
+                currentCase.aiDecision = aiDecision;
+                
+                presentBtn.disabled = notPresentBtn.disabled = false;
+            }, aiDelay);
+        }
+
+        function endReview() {
+            reviewSection.classList.add('hidden');
+            reportSection.classList.remove('hidden');
+            
+            let correctCount = 0;
+            if (reviewResults.length > 0) {
+                reviewResults.forEach(result => {
+                    if (result['User Decision'] === result['Ground Truth']) {
+                        correctCount++;
+                    }
+                });
+                const accuracy = ((correctCount / reviewResults.length) * 100).toFixed(1);
+                finalStats.textContent = `You correctly identified ${correctCount} out of ${reviewResults.length} cases (${accuracy}% accuracy).`;
+            } else {
+                finalStats.textContent = "No cases were reviewed in this session. Please check your data and try again.";
+            }
+
+            document.getElementById('github-username-report').textContent = githubUsername;
+        }
+
+        async function createOrUpdateGitHubFile(repo, path, content, message, token) {
+            const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+            const encodedContent = btoa(unescape(encodeURIComponent(content)));
+
+            let sha = null;
+            try {
+                const getResponse = await fetch(url, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (getResponse.ok) {
+                    const fileData = await getResponse.json();
+                    sha = fileData.sha;
+                }
+            } catch (error) {
+                console.warn("File doesn't exist, will create it.");
+            }
+
+            const payload = {
+                message,
+                content: encodedContent,
+                sha
+            };
+
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`GitHub API error: ${response.status} ${response.statusText}. Message: ${errorData.message}`);
+            }
+        }
+
+        function generateCSV(data) {
+            if (data.length === 0) return '';
+            const headers = Object.keys(data[0]).join(',');
+            const rows = data.map(obj => Object.values(obj).map(v => `"${v}"`).join(',')).join('\n');
+            return `${headers}\n${rows}`;
+        }
+
+        function showMessage(message, autoClose = false) {
+            modalMessage.textContent = message;
+            modal.classList.remove('hidden');
+            if (autoClose) {
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
